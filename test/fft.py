@@ -1,6 +1,8 @@
 
 import numpy as np
 import random
+from threading import Thread, Barrier
+from concurrent.futures import ThreadPoolExecutor
 
 def _is_power_of_2(x):
     return (x & (x - 1)) == 0
@@ -16,75 +18,134 @@ def lib_fft(x):
 
     return np.fft.fft(x)
 
-def my_fft_rec_np(x):
+def random_range(*args):
+    a = list(range(*args))
+    random.shuffle(a)
+    return a
+
+def fft_parallel(x):
     assert _is_power_of_2(len(x))
 
-    def _fft(x):
+
+    def _fft_parallel(x, out, i, barrier):
         N = len(x)
+        k = N
+        thetaT = 3.14159265358979323846264338328 / N
+        phiT = np.cos(thetaT) - 1j * np.sin(thetaT)
 
-        if N == 1:
-            return x
-        else:
-            X_even = _fft(x[::2])
-            X_odd = _fft(x[1::2])
-            factor = np.exp(-2j*np.pi*np.arange(N)/ N)
+        while k > 1:
+            n = k
+            k >>= 1
+            phiT = phiT * phiT
+            T = 1.0
 
-            X = np.concatenate([
-                X_even+factor[:N // 2] * X_odd,
-                 X_even+factor[N // 2:] * X_odd
-            ])
-        return X
+            for l in range(k):
+                a = i
+                if a in range(l, N, n):
+                    b = a + k
+                    t = x[a] - x[b]
+                    out[a] = x[a] + x[b]
+                    out[b] = t * T
+                T *= phiT
+            barrier.wait()
+            out, x = x, out
 
-    return _fft(x)
+        m = int(np.log2(N))
 
-def my_fft_rec(x):
+        a = i
+        if 1:
+            b = a
+
+            # Reverse bits
+            b = (((b & 0xaaaaaaaa) >> 1) | ((b & 0x55555555) << 1))
+            b = (((b & 0xcccccccc) >> 2) | ((b & 0x33333333) << 2))
+            b = (((b & 0xf0f0f0f0) >> 4) | ((b & 0x0f0f0f0f) << 4))
+            b = (((b & 0xff00ff00) >> 8) | ((b & 0x00ff00ff) << 8))
+            b = ((b >> 16) | (b << 16)) >> (32 - m)
+            if b > a:
+                t = x[a]
+                x[a] = x[b]
+                x[b] = t
+
+    threads = []
+    barrier = Barrier(len(x))
+    out = np.zeros_like(x)
+
+    for i in range(len(x)):
+        args = (x, out, i, barrier)
+        t = Thread(target=_fft_parallel, args=args)
+        t.start()
+        threads.append(t)
+    for t in threads:
+        t.join()
+
+
+def fast_fft(x):
     assert _is_power_of_2(len(x))
 
-    def _fft(x):
-        N = len(x)
+    out = np.zeros_like(x)
+    N = len(x)
+    k = N
+    thetaT = 3.14159265358979323846264338328 / N
+    phiT = np.cos(thetaT) - 1j * np.sin(thetaT)
+    swap = 0
 
-        if N == 1:
-            return x
-        else:
-            x[::2] = _fft(x[::2])
-            x[1::2] = _fft(x[1::2])
-            factor = np.exp(-2j*np.pi*np.arange(N)/ N)
+    while k > 1:
+        n = k
+        k >>= 1
+        phiT = phiT * phiT
+        T = 1.0
 
-            x = np.concatenate([
-                x[::2] + factor[:N // 2] * x[1::2],
-                x[::2] + factor[N // 2:] * x[1::2]
-            ])
-        return x
+        for l in range(k):
+            for a in random_range(l, N, n):
+                b = a + k
+                t = x[a] - x[b]
+                out[a] = x[a] + x[b]
+                out[b] = t * T
+            T *= phiT
+        swap += 1
+        out, x = x, out
 
-    return _fft(x)
+    # Decimate
+    m = int(np.log2(N))
+    print('swaps', swap)
+    if swap % 2:
+        out, x = x, out
+        swap += 1
+    print('swaps', swap)
 
-def my_fft_rec_inplace(x):
-    assert _is_power_of_2(len(x))
+    for a in range(N):
+        b = a
 
-    def _fft(x, N, start, end, step):
-        if N == 1:
-            return
-        else:
-            _fft(x, N // 2, start, end, step * 2)
-            _fft(x, N // 2, start + 1, end, step * 2)
+        # Reverse bits
+        b = (((b & 0xaaaaaaaa) >> 1) | ((b & 0x55555555) << 1))
+        b = (((b & 0xcccccccc) >> 2) | ((b & 0x33333333) << 2))
+        b = (((b & 0xf0f0f0f0) >> 4) | ((b & 0x0f0f0f0f) << 4))
+        b = (((b & 0xff00ff00) >> 8) | ((b & 0x00ff00ff) << 8))
+        b = ((b >> 16) | (b << 16)) >> (32 - m)
+        if b > a:
+            t = x[a]
+            x[a] = x[b]
+            x[b] = t
 
-            for k in range(N // 2):
-                p = x[k]
-                q = np.exp(-2j * np.pi * k / N) * x[k + N // 2]
-                x[k] = p + q
-                x[k + N // 2] = p - q
-        return
 
-    _fft(x, len(x), 0, len(x), 1)
-    return x
+def test():
+    size = 2**12
+    a = np.random.rand(size).astype(complex)
+    b = np.copy(a)
+
+    a = lib_fft(a)
+    fft_parallel(b)
+
+    #_print(a)
+    #_print(b)
+    for i in range(size):
+        d = (a[i] - b[i]) / (a[i] + b[i])
+        if d > 1e-3:
+            raise ValueError
 
 def main():
-    x = [1, 2, 3, 4, 5, 6, 7, 8]
-    lib = lib_fft(x)
-    my = my_fft_rec_inplace(x)
-    _print(lib)
-    _print(my)
-    assert abs(sum(lib - my)) < 1e-5
+    test()
 
 if __name__ == '__main__':
     main()
