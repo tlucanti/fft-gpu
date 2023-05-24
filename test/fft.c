@@ -4,6 +4,7 @@
 #include <complex.h>
 #include <string.h>
 #include <stdlib.h>
+#include <pthread.h>
 
 #define ARRAY_SIZE(a) (sizeof(a) / sizeof(a[0]))
 double PI;
@@ -31,22 +32,73 @@ void fft(cplx buf[], int n)
 	_fft(buf, out, n, 1);
 }
 
-unsigned int reverse_bits(unsigned int b)
+volatile cplx *x;
+volatile cplx *out;
+unsigned N;
+
+void *_fft_parallel(void *I_ptr)
 {
-		// Reverse bits
-		b = (((b & 0xaaaaaaaa) >> 1) | ((b & 0x55555555) << 1));
-		b = (((b & 0xcccccccc) >> 2) | ((b & 0x33333333) << 2));
-		b = (((b & 0xf0f0f0f0) >> 4) | ((b & 0x0f0f0f0f) << 4));
-		b = (((b & 0xff00ff00) >> 8) | ((b & 0x00ff00ff) << 8));
-		b = ((b >> 16) | (b << 16));
-		return b;
+	unsigned int i = (unsigned long)I_ptr;
+	unsigned int k = N, n;
+	double thetaT = 3.14159265358979323846264338328L / N;
+	cplx phiT = cos(thetaT) - 1.0j * sin(thetaT), T;
+	while (k > 1) {
+		n = k;
+		k >>= 1;
+		phiT = phiT * phiT;
+		T = 1.0L;
+		for (unsigned int l = 0; l < k; l++) {
+			unsigned int a = i;
+			if (a in range(l, N, n)) {
+				unsigned int b = a + k;
+				cplx t = x[a] - x[b];
+				x[a] += x[b];
+				x[b] = t * T;
+			}
+			T *= phiT;
+		}
+	}
+	// Decimate
+	unsigned int m = (unsigned int)log2(N);
+	unsigned int a = i;
+	unsigned int b = a;
+
+	// Reverse bits
+	b = (((b & 0xaaaaaaaa) >> 1) | ((b & 0x55555555) << 1));
+	b = (((b & 0xcccccccc) >> 2) | ((b & 0x33333333) << 2));
+	b = (((b & 0xf0f0f0f0) >> 4) | ((b & 0x0f0f0f0f) << 4));
+	b = (((b & 0xff00ff00) >> 8) | ((b & 0x00ff00ff) << 8));
+	b = ((b >> 16) | (b << 16)) >> (32 - m);
+	if (b > a) {
+		cplx t = x[a];
+		x[a] = x[b];
+		x[b] = t;
+	}
+	return NULL;
+}
+
+void fft_parallel(cplx local_x[], unsigned local_N)
+{
+	pthread_t threads[N];
+	cplx local_out[N];
+
+	x = local_x;
+	out = local_out;
+	N = local_N;
+
+	for (unsigned i = 0; i < N; ++i) {
+		pthread_create(&threads[i], NULL, _fft_parallel, (void *)i);
+	}
+	for (unsigned i = 0; i < N; ++i) {
+		pthread_join(threads[i], NULL);
+	}
 }
 
 void fft_fast(cplx x[], unsigned int N)
 {
 	unsigned int k = N, n;
 	double thetaT = 3.14159265358979323846264338328L / N;
-	cplx phiT = cos(thetaT) - 1j * sin(thetaT), T;
+	cplx phiT = cos(thetaT) - 1.0j * sin(thetaT), T;
 	while (k > 1)
 	{
 		n = k;

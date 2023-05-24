@@ -89,6 +89,7 @@ def fast_fft(x):
     thetaT = 3.14159265358979323846264338328 / N
     phiT = np.cos(thetaT) - 1j * np.sin(thetaT)
     swap = 0
+    iter = 0
 
     while k > 1:
         n = k
@@ -97,6 +98,8 @@ def fast_fft(x):
         T = 1.0
 
         for l in range(k):
+            iter += 1
+            print(l, N, n)
             for a in random_range(l, N, n):
                 b = a + k
                 t = x[a] - x[b]
@@ -105,6 +108,8 @@ def fast_fft(x):
             T *= phiT
         swap += 1
         out, x = x, out
+
+    print(iter)
 
     # Decimate
     m = int(np.log2(N))
@@ -130,12 +135,13 @@ def fast_fft(x):
 
 
 def test():
-    size = 2**12
+    size = 2**4
     a = np.random.rand(size).astype(complex)
     b = np.copy(a)
 
     a = lib_fft(a)
-    fft_parallel(b)
+    fast_fft(b)
+    #fft_parallel(b)
 
     #_print(a)
     #_print(b)
