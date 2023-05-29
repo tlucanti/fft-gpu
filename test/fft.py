@@ -8,8 +8,18 @@ def _is_power_of_2(x):
     return (x & (x - 1)) == 0
 
 def _print(x):
+
+    def __pr(n):
+        if abs(n) < 1e-3:
+            return '0'
+        else:
+            return f'{n:g}'
+
     for i in x:
-        print(end=f'{i:.2f} ')
+        if abs(i.imag) < 1e-3:
+            print(__pr(i.real), end=' ')
+        else:
+            print(end=f'({__pr(i.real)}, {__pr(i.imag)}) ')
     print()
 
 
@@ -48,6 +58,9 @@ def fft_parallel(x):
                     out[b] = t * T
                 T *= phiT
             barrier.wait()
+            #if (i == 0):
+            #   print(k, end=' : ')
+            #    _print(out)
             out, x = x, out
 
         m = int(np.log2(N))
@@ -133,25 +146,44 @@ def fast_fft(x):
             x[a] = x[b]
             x[b] = t
 
+def diff(a, b):
+    assert len(a) == len(b)
+
+    size = len(a)
+    for i in range(size):
+        d = abs(a[i] - b[i]) / abs(a[i] + b[i])
+        if d > 1e-3:
+            raise ValueError
+    print('diff: OK')
 
 def test():
-    size = 2**4
+    size = 2**8
     a = np.random.rand(size).astype(complex)
     b = np.copy(a)
+    c = np.copy(a)
 
     a = lib_fft(a)
-    fast_fft(b)
-    #fft_parallel(b)
+    _print(a)
+    #fast_fft(b)
+    #fft_parallel(c)
+    fft_parallel(b)
+    _print(b)
+    diff(a, b)
 
     #_print(a)
     #_print(b)
-    for i in range(size):
-        d = (a[i] - b[i]) / (a[i] + b[i])
-        if d > 1e-3:
-            raise ValueError
+    #_print(c)
 
-def main():
-    test()
+def run():
+    size = 2**10
+    a = np.arange(1, size + 1).astype(complex)
+    b = lib_fft(a)
+    fft_parallel(a)
+    print(end='res : ')
+    _print(a)
+    print(end='lib : ')
+    _print(b)
+    diff(a, b)
 
 if __name__ == '__main__':
-    main()
+    run()

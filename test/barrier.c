@@ -14,11 +14,15 @@ inline void barrier_wait(struct barrier *barrier, int id, int iter)
 	atomic_fetch_add(&barrier->waiting_threads, 1);
 
 	if (id == 0) {
-		while (atomic_load(&barrier->waiting_threads) < barrier->total_threads);
+		while (atomic_load(&barrier->waiting_threads) < barrier->total_threads) {
+			sched_yield();
+		}
 		atomic_store(&barrier->waiting_threads, 0);
 		atomic_fetch_add(&barrier->current_iteration, 1);
 	} else {
-		while (atomic_load(&barrier->current_iteration) < iter);
+		while (atomic_load(&barrier->current_iteration) < iter) {
+			sched_yield();
+		}
 	}
 }
 

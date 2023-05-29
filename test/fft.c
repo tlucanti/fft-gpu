@@ -7,6 +7,22 @@ volatile COMPLEX *g_out;
 unsigned g_N;
 struct barrier barrier;
 
+#define __pr(x) (cabs(x) < 1e-3 ? 0.0 : x)
+
+static void show(COMPLEX *buf, int size) {
+	for (int i = 0; i < size; i++) {
+		if (cabs(cimag(buf[i])) < 1e-3) {
+			printf("%g ",
+				__pr(creal(buf[i])));
+		} else {
+			printf("(%g, %g) ",
+				__pr(creal(buf[i])),
+				__pr(cimag(buf[i])));
+		}
+	}
+	printf("\n");
+}
+
 static inline bool is_in_range(int n, int start, int end, int step) {
 	if (n >= start && n <= end) {
 		return (n - start) % step == 0;
@@ -38,7 +54,7 @@ void *_fft_parallel(void *id)
 		n = k;
 		k >>= 1;
 		phiT = complex_mul(phiT, phiT);
-		T = 1.0L;
+		T = 1.0;
 		for (unsigned int l = 0; l < k; l++) {
 			unsigned int a = pid;
 			if (is_in_range(a, l, N, n)) {
@@ -49,8 +65,12 @@ void *_fft_parallel(void *id)
 			}
 			T = complex_mul(T, phiT);
 		}
-		swap(out, x);
 		barrier_wait(&barrier, pid, iter);
+		//if (pid == 0) {
+		//	printf("%d : ", k);
+		//	show((void *)out, N);
+		//}
+		swap(out, x);
 		++iter;
 	}
 
@@ -139,19 +159,6 @@ void fft_fast(COMPLEX x[], unsigned int N)
 	}
 }
 
-void show(const char * s, COMPLEX buf[], int size) {
-	printf("%s", s);
-	for (int i = 0; i < size; i++) {
-		if (i % 8 == 0) {
-			printf("\n");
-		}
-		if (!cimag(buf[i]))
-			printf("%g ", creal(buf[i]));
-		else
-			printf("(%g, %g) ", creal(buf[i]), cimag(buf[i]));
-	}
-}
-
 void diff(COMPLEX b1[], COMPLEX b2[], int size) {
 	for (int i = 0; i < size; ++i) {
 		printf("(%.3g %.3g) (%.3g %.3g)\n",
@@ -162,13 +169,20 @@ void diff(COMPLEX b1[], COMPLEX b2[], int size) {
 
 int main()
 {
-	COMPLEX buf1[] = {1, 2, 3, 4, 5, 6, 7, 8};
-	COMPLEX buf2[] = {1, 2, 3, 4, 5, 6, 7, 8};
+	const int size = 1 << 10;
+	COMPLEX buf1[size];
+	COMPLEX buf2[size];
+
+	for (int i = 0; i < size; ++i) {
+		buf1[i] = i + 1;
+		buf2[i] = i + 1;
+	}
 
 	fft_parallel(buf1, ARRAY_SIZE(buf1));
 	fft_fast(buf2, ARRAY_SIZE(buf2));
-	show("\nFFT : ", buf1, ARRAY_SIZE(buf1));
-	show("\nFFT : ", buf2, ARRAY_SIZE(buf2));
+	printf("res : ");
+	show(buf1, ARRAY_SIZE(buf1));
+	//show(buf2, ARRAY_SIZE(buf2));
 	printf("\n");
 
 	return 0;
