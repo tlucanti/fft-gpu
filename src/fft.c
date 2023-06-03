@@ -1,26 +1,17 @@
 
 #include <fft.h>
-#include <barrier.h>
+
+#define PI 3.14159265358979323846264338328L
+#define COMPLEX_SET(real, imag) ((real) + 1.0j * (imag))
 
 volatile COMPLEX *g_x;
 volatile COMPLEX *g_out;
-unsigned g_N;
+volatile COMPLEX g_N;
 struct barrier barrier;
 
-#define __pr(x) (cabs(x) < 1e-3 ? 0.0 : x)
-
-static void show(COMPLEX *buf, int size) {
-	for (int i = 0; i < size; i++) {
-		if (cabs(cimag(buf[i])) < 1e-3) {
-			printf("%g ",
-				__pr(creal(buf[i])));
-		} else {
-			printf("(%g, %g) ",
-				__pr(creal(buf[i])),
-				__pr(cimag(buf[i])));
-		}
-	}
-	printf("\n");
+static inline COMPLEX complex_mul(COMPLEX a, COMPLEX b)
+{
+	return a * b;
 }
 
 static inline bool is_in_range(int n, int start, int end, int step) {
@@ -31,12 +22,7 @@ static inline bool is_in_range(int n, int start, int end, int step) {
 	}
 }
 
-static inline COMPLEX complex_mul(COMPLEX a, COMPLEX b)
-{
-	return a * b;
-}
-
-void *_fft_parallel(void *id)
+static void *fft_parallel_worker(void *id)
 {
 	volatile COMPLEX *x = g_x;
 	volatile COMPLEX *out = g_out;
@@ -91,9 +77,8 @@ void *_fft_parallel(void *id)
 	return NULL;
 }
 
-void fft_parallel(COMPLEX x[], unsigned N)
+void fft_parallel(COMPLEX *x, unsigned N)
 {
-	printf("compute fft using %d threads\n", N);
 	pthread_t threads[N];
 	COMPLEX out[N];
 
@@ -103,7 +88,7 @@ void fft_parallel(COMPLEX x[], unsigned N)
 	barrier_init(&barrier, N);
 
 	for (unsigned long i = 0; i < N; ++i) {
-		if (pthread_create(&threads[i], NULL, _fft_parallel, (void *)i)) {
+		if (pthread_create(&threads[i], NULL, fft_parallel_worker, (void *)i)) {
 			printf("pthread_create error\n");
 			exit(1);
 		}
@@ -116,7 +101,7 @@ void fft_parallel(COMPLEX x[], unsigned N)
 	}
 }
 
-void fft_fast(COMPLEX x[], unsigned int N)
+void fft_fast(COMPLEX *x, unsigned int N)
 {
 	unsigned int k = N, n;
 	FLOAT thetaT = PI / N;
@@ -155,51 +140,6 @@ void fft_fast(COMPLEX x[], unsigned int N)
 			COMPLEX t = x[a];
 			x[a] = x[b];
 			x[b] = t;
-		}
-	}
-}
-
-void diff(COMPLEX b1[], COMPLEX b2[], int size) {
-	for (int i = 0; i < size; ++i) {
-		printf("(%.3g %.3g) (%.3g %.3g)\n",
-			creal(b1[i]), cimag(b1[i]),
-			creal(b2[i]), cimag(b2[i]));
-	}
-}
-
-int main()
-{
-	const int size = 1 << 8;
-	COMPLEX buf1[size];
-	COMPLEX buf2[size];
-
-	for (int i = 0; i < size; ++i) {
-		buf1[i] = i + 1;
-		buf2[i] = i + 1;
-	}
-
-	fft_parallel(buf1, ARRAY_SIZE(buf1));
-	fft_fast(buf2, ARRAY_SIZE(buf2));
-	printf("res : ");
-	show(buf1, ARRAY_SIZE(buf1));
-	//show(buf2, ARRAY_SIZE(buf2));
-	printf("\n");
-
-	//return 0;
-	const int s = 1 << 8;
-	COMPLEX b1[s];
-	COMPLEX b2[s];
-	for (int i = 0; i < s; ++i) {
-		b1[i] = rand();
-		b2[i] = b1[i];
-	}
-	fft_parallel(b1, s);
-	fft_fast(b2, s);
-	//diff(b1, b2, s);
-	for (int i = 0; i < s; ++i) {
-		FLOAT d = cabs(b1[i] - b2[i]) / cabs(b1[i] + b2[i]);
-		if (d > 1e-3) {
-			abort();
 		}
 	}
 }
