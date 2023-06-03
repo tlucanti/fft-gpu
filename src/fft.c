@@ -169,7 +169,7 @@ void diff(COMPLEX b1[], COMPLEX b2[], int size) {
 
 int main()
 {
-	const int size = 1 << 10;
+	const int size = 1 << 8;
 	COMPLEX buf1[size];
 	COMPLEX buf2[size];
 
@@ -185,8 +185,8 @@ int main()
 	//show(buf2, ARRAY_SIZE(buf2));
 	printf("\n");
 
-	return 0;
-	const int s = 8;
+	//return 0;
+	const int s = 1 << 8;
 	COMPLEX b1[s];
 	COMPLEX b2[s];
 	for (int i = 0; i < s; ++i) {
@@ -197,8 +197,8 @@ int main()
 	fft_fast(b2, s);
 	//diff(b1, b2, s);
 	for (int i = 0; i < s; ++i) {
-		FLOAT d = cabs(b1[i] - b2[i]);
-		if (d > cabs(b1[i] + b2[i]) / 100) {
+		FLOAT d = cabs(b1[i] - b2[i]) / cabs(b1[i] + b2[i]);
+		if (d > 1e-3) {
 			abort();
 		}
 	}
